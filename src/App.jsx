@@ -52,7 +52,7 @@ export default function App() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    fetch('/data/graph.json')
+    fetch(`${import.meta.env.BASE_URL}data/graph.json`)
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json()
