@@ -43,6 +43,20 @@ function formatKST(iso) {
   }).format(new Date(iso))
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function scaleLogValue(value, domainMin, domainMax, rangeMin, rangeMax) {
+  const safeValue = Math.max(1, value || 1)
+  const safeMin = Math.max(1, domainMin || 1)
+  const safeMax = Math.max(safeMin + 1, domainMax || safeMin + 1)
+  const ratio = (Math.log10(safeValue) - Math.log10(safeMin)) / (Math.log10(safeMax) - Math.log10(safeMin))
+  const normalized = clamp(Number.isFinite(ratio) ? ratio : 0, 0, 1)
+
+  return rangeMin + normalized * (rangeMax - rangeMin)
+}
+
 export default function App() {
   const graphRef = useRef(null)
   const [graph, setGraph] = useState(null)
@@ -123,6 +137,41 @@ export default function App() {
       stars,
     }
   }, [filteredGraph])
+
+  const graphRanges = useMemo(() => {
+    if (!filteredGraph?.nodes?.length) {
+      return {
+        minStars: 500,
+        maxStars: 5000,
+        minWeight: 1,
+        maxWeight: 10,
+      }
+    }
+
+    const stars = filteredGraph.nodes.map((node) => node.stars || 0)
+    const weights = filteredGraph.links?.length ? filteredGraph.links.map((link) => link.weight || 1) : [1]
+
+    return {
+      minStars: Math.min(...stars),
+      maxStars: Math.max(...stars),
+      minWeight: Math.min(...weights),
+      maxWeight: Math.max(...weights),
+    }
+  }, [filteredGraph])
+
+  const getNodeRadius = (node) => scaleLogValue(node.stars, graphRanges.minStars, graphRanges.maxStars, 4, 18)
+
+  const getLinkWidth = (link, isHighlighted) => {
+    const width = scaleLogValue(link.weight || 1, graphRanges.minWeight, graphRanges.maxWeight, 0.7, 2.2)
+    return isHighlighted ? width * 1.8 : width
+  }
+
+  const getLinkColor = (link, isHighlighted) => {
+    const opacity = scaleLogValue(link.weight || 1, graphRanges.minWeight, graphRanges.maxWeight, 0.18, 0.42)
+    return isHighlighted
+      ? `rgba(191, 219, 254, ${Math.min(opacity + 0.3, 0.88)})`
+      : `rgba(96, 165, 250, ${opacity})`
+  }
 
   const focusNode = (node) => {
     if (!node || !graphRef.current) return
@@ -205,21 +254,27 @@ export default function App() {
                 ref={graphRef}
                 graphData={filteredGraph}
                 backgroundColor="#020817"
-                nodeRelSize={5}
+                nodeRelSize={6}
                 cooldownTicks={100}
-                linkColor={(link) => highlightedIds.has(typeof link.source === 'string' ? link.source : link.source.id) && highlightedIds.has(typeof link.target === 'string' ? link.target : link.target.id) ? 'rgba(148,163,184,0.45)' : 'rgba(71,85,105,0.15)'}
+                linkColor={(link) => {
+                  const source = typeof link.source === 'string' ? link.source : link.source.id
+                  const target = typeof link.target === 'string' ? link.target : link.target.id
+                  const isHighlighted = highlightedIds.has(source) && highlightedIds.has(target)
+                  return getLinkColor(link, isHighlighted)
+                }}
                 linkWidth={(link) => {
                   const source = typeof link.source === 'string' ? link.source : link.source.id
                   const target = typeof link.target === 'string' ? link.target : link.target.id
-                  return highlightedIds.has(source) && highlightedIds.has(target) ? 1.5 : 0.5
+                  const isHighlighted = highlightedIds.has(source) && highlightedIds.has(target)
+                  return getLinkWidth(link, isHighlighted)
                 }}
-                nodeVal={(node) => node.size}
+                nodeVal={(node) => getNodeRadius(node)}
                 nodeColor={(node) => CATEGORY_COLORS[node.primary_category] || CATEGORY_COLORS.Other}
                 onNodeClick={(node) => focusNode(node)}
                 nodeCanvasObject={(node, ctx, scale) => {
                   const isSelected = node.id === selectedId
                   const isNeighbor = highlightedIds.has(node.id)
-                  const radius = Math.max(3, node.size)
+                  const radius = getNodeRadius(node)
 
                   ctx.beginPath()
                   ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false)
