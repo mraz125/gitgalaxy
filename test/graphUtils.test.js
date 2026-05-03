@@ -5,6 +5,7 @@ import {
   filterGraphByCategory,
   findRepoByQuery,
   getCategoryCounts,
+  getFeaturedRepositories,
   getRelatedRepositories,
   normalizeRepoQuery,
 } from '../src/graphUtils.js'
@@ -85,5 +86,12 @@ test('getRelatedRepositories sorts selected neighbors by score', () => {
   assert.deepEqual(related.map((item) => [item.node.id, item.weight]), [
     ['openai/openai-cookbook', 7.2],
     ['vllm-project/vllm', 4.1],
+  ])
+})
+
+test('getFeaturedRepositories returns top repositories for the current filtered graph', () => {
+  assert.deepEqual(getFeaturedRepositories(graph, 2).map((node) => node.id), [
+    'langchain-ai/langchain',
+    'openai/openai-cookbook',
   ])
 })

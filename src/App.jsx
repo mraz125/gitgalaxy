@@ -5,6 +5,7 @@ import {
   findRepoByQuery,
   getCategoryCounts,
   getEndpointId,
+  getFeaturedRepositories,
   getLanguageCounts,
   getRelatedRepositories,
   getSearchMatches,
@@ -77,7 +78,6 @@ export default function App() {
 
   const categoryCounts = useMemo(() => getCategoryCounts(graph?.nodes || []), [graph])
   const languageCounts = useMemo(() => getLanguageCounts(graph?.nodes || []), [graph])
-  const topRepositories = useMemo(() => [...(graph?.nodes || [])].sort((a, b) => (b.stars || 0) - (a.stars || 0)).slice(0, 6), [graph])
   const maxStars = useMemo(() => Math.max(...(graph?.nodes || []).map((node) => node.stars || 0), 1000), [graph])
 
   const filteredGraph = useMemo(
@@ -136,6 +136,7 @@ export default function App() {
     () => getRelatedRepositories(filteredGraph, selectedNode?.id, 12),
     [filteredGraph, selectedNode],
   )
+  const featuredRepositories = useMemo(() => getFeaturedRepositories(filteredGraph, 5), [filteredGraph])
 
   const graphRanges = useMemo(() => {
     if (!filteredGraph?.nodes?.length) {
@@ -224,17 +225,17 @@ export default function App() {
       <section className="controls">
         <div className="searchbar">
           <label className="field">
-            <span>Repository search</span>
+            <span>저장소 검색</span>
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={(event) => event.key === 'Enter' && runSearch()}
-              placeholder="owner/repo, repo name, or GitHub URL"
+              placeholder="owner/repo, 저장소 이름, GitHub URL"
             />
           </label>
-          <button className="primary-action" onClick={runSearch}>Focus</button>
-          <button className="ghost-action" onClick={fitGraph}>Fit</button>
-          <button className="ghost-action" onClick={resetFilters}>Reset</button>
+          <button className="primary-action" onClick={runSearch}>검색</button>
+          <button className="ghost-action" onClick={fitGraph}>전체 보기</button>
+          <button className="ghost-action" onClick={resetFilters}>초기화</button>
         </div>
         {searchMatches.length ? (
           <div className="search-results" aria-label="Search suggestions">
@@ -250,39 +251,25 @@ export default function App() {
             ))}
           </div>
         ) : null}
-        <div className="filter-grid">
-          <div className="filter-group">
-            <div className="filter-label">Categories</div>
-            <div className="chip-row">
+        <div className="filter-bar">
+          <label className="select-control">
+            <span>카테고리</span>
+            <select value={activeCategory} onChange={(event) => setActiveCategory(event.target.value)}>
               {categoryCounts.map(([category, count]) => (
-                <button
-                  key={category}
-                  className={category === activeCategory ? 'chip active' : 'chip'}
-                  onClick={() => setActiveCategory(category)}
-                >
-                  <span>{category}</span>
-                  <small>{formatStars(count)}</small>
-                </button>
+                <option key={category} value={category}>{category} ({formatStars(count)})</option>
               ))}
-            </div>
-          </div>
-          <div className="filter-group compact">
-            <div className="filter-label">Languages</div>
-            <div className="chip-row">
+            </select>
+          </label>
+          <label className="select-control">
+            <span>언어</span>
+            <select value={activeLanguage} onChange={(event) => setActiveLanguage(event.target.value)}>
               {languageCounts.map(([language, count]) => (
-                <button
-                  key={language}
-                  className={language === activeLanguage ? 'chip active' : 'chip'}
-                  onClick={() => setActiveLanguage(language)}
-                >
-                  <span>{language}</span>
-                  <small>{formatStars(count)}</small>
-                </button>
+                <option key={language} value={language}>{language} ({formatStars(count)})</option>
               ))}
-            </div>
-          </div>
+            </select>
+          </label>
           <label className="range-control">
-            <span>Minimum stars <strong>{formatStars(minStars)}</strong></span>
+            <span>최소 stars <strong>{formatStars(minStars)}</strong></span>
             <input
               type="range"
               min={graph?.min_stars || 0}
@@ -294,35 +281,42 @@ export default function App() {
           </label>
         </div>
         {message ? <div className="message" role="status">{message}</div> : null}
-      </section>
-
-      <section className="market-strip" aria-label="Repository snapshot">
-        {topRepositories.map((node) => (
-          <button key={node.id} onClick={() => {
-            setActiveCategory('All')
-            setActiveLanguage('All')
-            setMinStars(graph?.min_stars || 0)
-            setTimeout(() => focusNode(node), 0)
-          }}>
-            <span>{node.primary_category}</span>
-            <strong>{node.id}</strong>
-            <small>{formatStars(node.stars)} stars</small>
-          </button>
-        ))}
+        <div className="featured-strip" aria-label="현재 조건의 추천 저장소">
+          <div className="featured-heading">
+            <span>현재 조건 상위 저장소</span>
+            <strong>{featuredRepositories.length ? `${featuredRepositories.length}개` : '없음'}</strong>
+          </div>
+          <div className="featured-list">
+            {featuredRepositories.map((node) => (
+              <button key={node.id} onClick={() => focusNode(node)}>
+                <span>{node.primary_category}</span>
+                <strong>{node.id}</strong>
+                <small>{formatStars(node.stars)} stars</small>
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
 
       <main className="main-grid">
         <section className="graph-panel panel">
           <div className="panel-heading">
             <div>
-              <div className="eyebrow">Live graph</div>
-              <h2>Repository network</h2>
+              <div className="eyebrow">Interactive map</div>
+              <h2>저장소 관계 그래프</h2>
             </div>
             <div className="stats-row">
               <div><span>Repos</span><strong>{formatStars(filteredStats?.repoCount || 0)}</strong></div>
               <div><span>Links</span><strong>{formatStars(filteredStats?.linkCount || 0)}</strong></div>
               <div><span>Total stars</span><strong>{formatStars(filteredStats?.stars || 0)}</strong></div>
             </div>
+          </div>
+          <div className="graph-toolbar">
+            <div>
+              <strong>{selectedNode?.id || '저장소를 선택하세요'}</strong>
+              <span>{selectedNode ? `${formatStars(selectedNode.stars)} stars · ${selectedNode.primary_category}` : '검색하거나 그래프의 점을 클릭하면 연결 저장소가 강조됩니다.'}</span>
+            </div>
+            <button className="ghost-action" onClick={fitGraph}>그래프 맞춤</button>
           </div>
           <div className="legend-row">
             {Object.entries(CATEGORY_COLORS).filter(([key]) => key !== 'Other').map(([label, color]) => (

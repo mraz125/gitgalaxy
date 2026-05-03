@@ -120,6 +120,14 @@ export function getSearchMatches(nodes = [], input = '', limit = 8) {
     .slice(0, limit)
 }
 
+export function getFeaturedRepositories(graph, limit = 5) {
+  if (!graph?.nodes?.length) return []
+
+  return [...graph.nodes]
+    .sort((left, right) => (right.stars || 0) - (left.stars || 0) || left.id.localeCompare(right.id))
+    .slice(0, limit)
+}
+
 export function getRelatedRepositories(graph, selectedId, limit = 12) {
   if (!graph || !selectedId) return []
 
