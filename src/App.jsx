@@ -1,33 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
+import {
+  filterGraph,
+  findRepoByQuery,
+  getCategoryCounts,
+  getEndpointId,
+  getLanguageCounts,
+  getRelatedRepositories,
+  getSearchMatches,
+} from './graphUtils'
 
 const CATEGORY_COLORS = {
-  'LLM': '#8b5cf6',
-  'Agents': '#22c55e',
-  'RAG': '#06b6d4',
-  'Inference': '#f97316',
-  'Fine-tuning': '#ef4444',
-  'Evaluation': '#eab308',
-  'AI Apps': '#3b82f6',
-  'Multimodal': '#ec4899',
-  'Other': '#94a3b8',
-}
-
-function normalizeRepoQuery(input) {
-  const trimmed = input.trim()
-  if (!trimmed) return ''
-
-  try {
-    const url = new URL(trimmed)
-    if (url.hostname.includes('github.com')) {
-      const parts = url.pathname.split('/').filter(Boolean)
-      if (parts.length >= 2) return `${parts[0]}/${parts[1]}`.toLowerCase()
-    }
-  } catch {
-    // noop
-  }
-
-  return trimmed.replace(/^github\.com\//, '').replace(/\/$/, '').toLowerCase()
+  'LLM': '#d7b56d',
+  'Agents': '#6ee7b7',
+  'RAG': '#67e8f9',
+  'Inference': '#fb923c',
+  'Fine-tuning': '#f87171',
+  'Evaluation': '#fde047',
+  'AI Apps': '#93c5fd',
+  'Multimodal': '#f0abfc',
+  'Other': '#a1a1aa',
 }
 
 function formatStars(value) {
@@ -63,6 +55,8 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
+  const [activeLanguage, setActiveLanguage] = useState('All')
+  const [minStars, setMinStars] = useState(0)
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -73,6 +67,7 @@ export default function App() {
       })
       .then((data) => {
         setGraph(data)
+        setMinStars(data.min_stars || 0)
         if (data.nodes?.length) {
           setSelectedId(data.nodes[0].id)
         }
@@ -80,27 +75,15 @@ export default function App() {
       .catch((error) => setMessage(`데이터 로드 실패: ${error.message}`))
   }, [])
 
-  const categories = useMemo(() => {
-    if (!graph?.nodes) return ['All']
-    const values = new Set()
-    graph.nodes.forEach((node) => node.categories?.forEach((category) => values.add(category)))
-    return ['All', ...Array.from(values)]
-  }, [graph])
+  const categoryCounts = useMemo(() => getCategoryCounts(graph?.nodes || []), [graph])
+  const languageCounts = useMemo(() => getLanguageCounts(graph?.nodes || []), [graph])
+  const topRepositories = useMemo(() => [...(graph?.nodes || [])].sort((a, b) => (b.stars || 0) - (a.stars || 0)).slice(0, 6), [graph])
+  const maxStars = useMemo(() => Math.max(...(graph?.nodes || []).map((node) => node.stars || 0), 1000), [graph])
 
-  const filteredGraph = useMemo(() => {
-    if (!graph) return null
-    if (activeCategory === 'All') return graph
-
-    const allowed = new Set(
-      graph.nodes.filter((node) => node.categories?.includes(activeCategory)).map((node) => node.id),
-    )
-
-    return {
-      ...graph,
-      nodes: graph.nodes.filter((node) => allowed.has(node.id)),
-      links: graph.links.filter((link) => allowed.has(link.source) && allowed.has(link.target)),
-    }
-  }, [graph, activeCategory])
+  const filteredGraph = useMemo(
+    () => filterGraph(graph, { category: activeCategory, language: activeLanguage, minStars }),
+    [activeCategory, activeLanguage, graph, minStars],
+  )
 
   const neighborMap = useMemo(() => {
     const map = new Map()
@@ -108,8 +91,8 @@ export default function App() {
 
     filteredGraph.nodes.forEach((node) => map.set(node.id, new Set([node.id])))
     filteredGraph.links.forEach((link) => {
-      const source = typeof link.source === 'string' ? link.source : link.source.id
-      const target = typeof link.target === 'string' ? link.target : link.target.id
+      const source = getEndpointId(link.source)
+      const target = getEndpointId(link.target)
       if (!map.has(source)) map.set(source, new Set([source]))
       if (!map.has(target)) map.set(target, new Set([target]))
       map.get(source).add(target)
@@ -121,6 +104,16 @@ export default function App() {
   const selectedNode = useMemo(() => {
     if (!filteredGraph?.nodes?.length) return null
     return filteredGraph.nodes.find((node) => node.id === selectedId) || null
+  }, [filteredGraph, selectedId])
+
+  useEffect(() => {
+    if (!filteredGraph?.nodes?.length) {
+      setSelectedId('')
+      return
+    }
+    if (!filteredGraph.nodes.some((node) => node.id === selectedId)) {
+      setSelectedId(filteredGraph.nodes[0].id)
+    }
   }, [filteredGraph, selectedId])
 
   const highlightedIds = useMemo(() => {
@@ -137,6 +130,12 @@ export default function App() {
       stars,
     }
   }, [filteredGraph])
+
+  const searchMatches = useMemo(() => getSearchMatches(filteredGraph?.nodes || [], query), [filteredGraph, query])
+  const relatedRepositories = useMemo(
+    () => getRelatedRepositories(filteredGraph, selectedNode?.id, 12),
+    [filteredGraph, selectedNode],
+  )
 
   const graphRanges = useMemo(() => {
     if (!filteredGraph?.nodes?.length) {
@@ -180,16 +179,26 @@ export default function App() {
     graphRef.current.zoom(5, 450)
   }
 
+  const fitGraph = () => {
+    graphRef.current?.zoomToFit(450, 42)
+  }
+
+  const resetFilters = () => {
+    setActiveCategory('All')
+    setActiveLanguage('All')
+    setMinStars(graph?.min_stars || 0)
+    setMessage('')
+  }
+
   const runSearch = () => {
-    const normalized = normalizeRepoQuery(query)
-    if (!normalized) {
+    if (!query.trim()) {
       setMessage('저장소 이름 또는 GitHub URL을 입력해 주세요.')
       return
     }
 
-    const node = filteredGraph?.nodes.find((item) => item.id.toLowerCase() === normalized)
+    const node = findRepoByQuery(filteredGraph?.nodes || [], query)
     if (!node) {
-      setMessage(`현재 그래프 범위에서 ${normalized} 저장소를 찾지 못했습니다.`)
+      setMessage('현재 필터 범위에서 정확히 하나의 저장소를 찾지 못했습니다. 아래 추천 결과를 선택하거나 필터를 완화해 주세요.')
       return
     }
 
@@ -201,9 +210,9 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div>
-          <div className="eyebrow">AI repository explorer</div>
+          <div className="eyebrow">Repository intelligence map</div>
           <h1>GitGalaxy</h1>
-          <p className="subtitle">AI 관련 GitHub 저장소를 별 크기와 연결 관계로 탐색합니다.</p>
+          <p className="subtitle">AI 오픈소스 저장소를 별 수, 분류, 언어, 관계 강도로 빠르게 탐색합니다.</p>
         </div>
         <div className="snapshot-card">
           <div>업데이트 시각</div>
@@ -213,35 +222,107 @@ export default function App() {
       </header>
 
       <section className="controls">
-        <div className="searchbox">
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => event.key === 'Enter' && runSearch()}
-            placeholder="owner/repo 또는 GitHub URL 검색"
-          />
-          <button onClick={runSearch}>찾기</button>
+        <div className="searchbar">
+          <label className="field">
+            <span>Repository search</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && runSearch()}
+              placeholder="owner/repo, repo name, or GitHub URL"
+            />
+          </label>
+          <button className="primary-action" onClick={runSearch}>Focus</button>
+          <button className="ghost-action" onClick={fitGraph}>Fit</button>
+          <button className="ghost-action" onClick={resetFilters}>Reset</button>
         </div>
-        <div className="category-row">
-          {categories.map((category) => (
-            <button
-              key={category}
-              className={category === activeCategory ? 'chip active' : 'chip'}
-              onClick={() => setActiveCategory(category)}
-            >
-              {category}
-            </button>
-          ))}
+        {searchMatches.length ? (
+          <div className="search-results" aria-label="Search suggestions">
+            {searchMatches.map((node) => (
+              <button key={node.id} onClick={() => {
+                setMessage('')
+                setQuery(node.id)
+                focusNode(node)
+              }}>
+                <strong>{node.id}</strong>
+                <span>{formatStars(node.stars)} stars</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <div className="filter-grid">
+          <div className="filter-group">
+            <div className="filter-label">Categories</div>
+            <div className="chip-row">
+              {categoryCounts.map(([category, count]) => (
+                <button
+                  key={category}
+                  className={category === activeCategory ? 'chip active' : 'chip'}
+                  onClick={() => setActiveCategory(category)}
+                >
+                  <span>{category}</span>
+                  <small>{formatStars(count)}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="filter-group compact">
+            <div className="filter-label">Languages</div>
+            <div className="chip-row">
+              {languageCounts.map(([language, count]) => (
+                <button
+                  key={language}
+                  className={language === activeLanguage ? 'chip active' : 'chip'}
+                  onClick={() => setActiveLanguage(language)}
+                >
+                  <span>{language}</span>
+                  <small>{formatStars(count)}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="range-control">
+            <span>Minimum stars <strong>{formatStars(minStars)}</strong></span>
+            <input
+              type="range"
+              min={graph?.min_stars || 0}
+              max={maxStars}
+              step="500"
+              value={minStars}
+              onChange={(event) => setMinStars(Number(event.target.value))}
+            />
+          </label>
         </div>
-        {message ? <div className="message">{message}</div> : null}
+        {message ? <div className="message" role="status">{message}</div> : null}
+      </section>
+
+      <section className="market-strip" aria-label="Repository snapshot">
+        {topRepositories.map((node) => (
+          <button key={node.id} onClick={() => {
+            setActiveCategory('All')
+            setActiveLanguage('All')
+            setMinStars(graph?.min_stars || 0)
+            setTimeout(() => focusNode(node), 0)
+          }}>
+            <span>{node.primary_category}</span>
+            <strong>{node.id}</strong>
+            <small>{formatStars(node.stars)} stars</small>
+          </button>
+        ))}
       </section>
 
       <main className="main-grid">
-        <section className="graph-panel card">
-          <div className="stats-row">
-            <div><span>Repos</span><strong>{formatStars(filteredStats?.repoCount || 0)}</strong></div>
-            <div><span>Links</span><strong>{formatStars(filteredStats?.linkCount || 0)}</strong></div>
-            <div><span>Total stars</span><strong>{formatStars(filteredStats?.stars || 0)}</strong></div>
+        <section className="graph-panel panel">
+          <div className="panel-heading">
+            <div>
+              <div className="eyebrow">Live graph</div>
+              <h2>Repository network</h2>
+            </div>
+            <div className="stats-row">
+              <div><span>Repos</span><strong>{formatStars(filteredStats?.repoCount || 0)}</strong></div>
+              <div><span>Links</span><strong>{formatStars(filteredStats?.linkCount || 0)}</strong></div>
+              <div><span>Total stars</span><strong>{formatStars(filteredStats?.stars || 0)}</strong></div>
+            </div>
           </div>
           <div className="legend-row">
             {Object.entries(CATEGORY_COLORS).filter(([key]) => key !== 'Other').map(([label, color]) => (
@@ -253,18 +334,18 @@ export default function App() {
               <ForceGraph2D
                 ref={graphRef}
                 graphData={filteredGraph}
-                backgroundColor="#020817"
+                backgroundColor="#050505"
                 nodeRelSize={6}
                 cooldownTicks={100}
                 linkColor={(link) => {
-                  const source = typeof link.source === 'string' ? link.source : link.source.id
-                  const target = typeof link.target === 'string' ? link.target : link.target.id
+                  const source = getEndpointId(link.source)
+                  const target = getEndpointId(link.target)
                   const isHighlighted = highlightedIds.has(source) && highlightedIds.has(target)
                   return getLinkColor(link, isHighlighted)
                 }}
                 linkWidth={(link) => {
-                  const source = typeof link.source === 'string' ? link.source : link.source.id
-                  const target = typeof link.target === 'string' ? link.target : link.target.id
+                  const source = getEndpointId(link.source)
+                  const target = getEndpointId(link.target)
                   const isHighlighted = highlightedIds.has(source) && highlightedIds.has(target)
                   return getLinkWidth(link, isHighlighted)
                 }}
@@ -282,7 +363,7 @@ export default function App() {
                   ctx.fill()
 
                   if (isNeighbor) {
-                    ctx.strokeStyle = isSelected ? '#f8fafc' : 'rgba(248,250,252,0.55)'
+                    ctx.strokeStyle = isSelected ? '#ffffff' : 'rgba(245,245,245,0.5)'
                     ctx.lineWidth = isSelected ? 2.5 : 1
                     ctx.stroke()
                   }
@@ -291,7 +372,7 @@ export default function App() {
                     const label = node.id
                     const fontSize = isSelected ? 13 / scale : 10 / scale
                     ctx.font = `${fontSize}px Inter, sans-serif`
-                    ctx.fillStyle = '#e2e8f0'
+                    ctx.fillStyle = '#fafafa'
                     ctx.fillText(label, node.x + radius + 2, node.y + radius + 2)
                   }
                 }}
@@ -302,13 +383,13 @@ export default function App() {
           </div>
         </section>
 
-        <aside className="detail-panel card">
+        <aside className="detail-panel panel">
           {selectedNode ? (
             <>
               <div className="detail-top">
                 <div className="eyebrow">Selected repository</div>
                 <h2>{selectedNode.id}</h2>
-                <a href={selectedNode.html_url} target="_blank" rel="noreferrer">GitHub에서 열기</a>
+                <a href={selectedNode.html_url} target="_blank" rel="noreferrer">Open on GitHub</a>
               </div>
               <p className="description">{selectedNode.description || '설명이 없습니다.'}</p>
               <dl className="detail-grid">
@@ -332,29 +413,17 @@ export default function App() {
               <div className="related-block">
                 <h3>Related repositories</h3>
                 <ul>
-                  {filteredGraph?.links
-                    .filter((link) => {
-                      const source = typeof link.source === 'string' ? link.source : link.source.id
-                      const target = typeof link.target === 'string' ? link.target : link.target.id
-                      return source === selectedNode.id || target === selectedNode.id
-                    })
-                    .slice(0, 12)
-                    .map((link) => {
-                      const source = typeof link.source === 'string' ? link.source : link.source.id
-                      const target = typeof link.target === 'string' ? link.target : link.target.id
-                      const targetId = source === selectedNode.id ? target : source
-                      return (
-                        <li key={`${source}-${target}`}>
-                          <button onClick={() => focusNode(filteredGraph.nodes.find((node) => node.id === targetId))}>{targetId}</button>
-                          <span>score {link.weight.toFixed(1)}</span>
-                        </li>
-                      )
-                    })}
+                  {relatedRepositories.map((item) => (
+                    <li key={`${item.source}-${item.target}`}>
+                      <button onClick={() => focusNode(item.node)}>{item.node.id}</button>
+                      <span>score {item.weight.toFixed(1)}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
             </>
           ) : (
-            <div className="loading">저장소를 선택하면 상세 정보가 표시됩니다.</div>
+            <div className="loading">필터 조건에 맞는 저장소가 없습니다.</div>
           )}
         </aside>
       </main>

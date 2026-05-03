@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test",
     "preview": "vite preview",
     "update-data": "python3 scripts/update_dataset.py",
     "review-report": "python3 scripts/local_review_candidates.py"
