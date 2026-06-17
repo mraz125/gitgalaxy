@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-06-16T04:10:47.009703+00:00",
-  "repo_count": 3780,
+  "generated_at": "2026-06-17T04:10:50.365882+00:00",
+  "repo_count": 3787,
   "category_hits": {
     "LLM": 1086,
-    "Agents": 1148,
+    "Agents": 1155,
     "RAG": 407,
     "Inference": 206,
     "Fine-tuning": 183,
@@ -13,8 +13,8 @@
   },
   "primary_category_distribution": {
     "AI Apps": 640,
-    "Agents": 1282,
-    "LLM": 672,
+    "Agents": 1288,
+    "LLM": 673,
     "Multimodal": 214,
     "Inference": 185,
     "RAG": 170,
