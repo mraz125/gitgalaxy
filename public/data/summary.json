@@ -1,25 +1,25 @@
 {
-  "generated_at": "2026-08-15T01:15:29.341996+00:00",
-  "repo_count": 3969,
+  "generated_at": "2026-08-16T01:20:20.512156+00:00",
+  "repo_count": 3967,
   "category_hits": {
     "LLM": 1095,
-    "Agents": 1268,
+    "Agents": 1265,
     "RAG": 441,
-    "Inference": 221,
+    "Inference": 222,
     "Fine-tuning": 193,
-    "Evaluation": 563,
-    "AI Apps": 1149,
+    "Evaluation": 562,
+    "AI Apps": 1150,
     "Multimodal": 284
   },
   "primary_category_distribution": {
-    "AI Apps": 632,
-    "Agents": 1435,
+    "AI Apps": 633,
+    "Agents": 1432,
     "LLM": 662,
-    "Multimodal": 218,
-    "Inference": 200,
+    "Multimodal": 219,
+    "Inference": 201,
     "RAG": 189,
     "Fine-tuning": 166,
-    "Evaluation": 467
+    "Evaluation": 465
   },
   "min_stars": 500,
   "manual_include_count": 1
