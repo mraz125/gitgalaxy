@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-08-23T01:22:01.945783+00:00",
-  "repo_count": 3993,
+  "generated_at": "2026-08-24T01:19:35.250284+00:00",
+  "repo_count": 3994,
   "category_hits": {
     "LLM": 1096,
     "Agents": 1285,
@@ -12,7 +12,7 @@
     "Multimodal": 285
   },
   "primary_category_distribution": {
-    "AI Apps": 642,
+    "AI Apps": 643,
     "Agents": 1447,
     "LLM": 654,
     "Multimodal": 220,
